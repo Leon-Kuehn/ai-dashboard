@@ -989,6 +989,7 @@
               <div class="live-dot" aria-hidden="true"></div>
               Live
             </div>
+            <span id="metrics-conn-indicator" style="font-size:0.72rem;padding:2px 8px;border-radius:4px;background:var(--bg-card);color:var(--text-muted);" title="metrics-proxy connection status">⬤ connecting…</span>
             <span id="last-updated" style="font-size:0.72rem;color:var(--text-muted);">–</span>
           </div>
         </div>
@@ -1058,8 +1059,8 @@
               <div>
                 <div class="metric-label">Disk Usage</div>
                 <div class="metric-value" style="font-size:1.15rem;"><span id="disk-val">247</span><span class="metric-unit">GB</span></div>
-                <div class="metric-sub">of 1 TB · 24.7%</div>
-                <div class="metric-bar-bg" style="margin-top:6px;"><div class="metric-bar bar-teal" style="width:24.7%"></div></div>
+                <div class="metric-sub" id="disk-sub">of 1 TB · 24.7%</div>
+                <div class="metric-bar-bg" style="margin-top:6px;"><div class="metric-bar bar-teal" id="disk-bar" style="width:24.7%"></div></div>
               </div>
             </div>
           </div>
@@ -1123,7 +1124,7 @@
           <div class="form-group">
             <label class="form-label" for="ollama-url">Ollama Base URL</label>
             <div class="settings-row">
-              <input type="url" id="ollama-url" class="form-input" value="http://localhost:11434" placeholder="http://localhost:11434" />
+              <input type="url" id="ollama-url" class="form-input" value="/api/ollama" placeholder="/api/ollama" />
               <button class="btn btn-sm" onclick="testConnection('ollama')" aria-label="Test Ollama connection">Test</button>
               <span class="conn-status" id="ollama-conn-status"></span>
             </div>
@@ -1131,7 +1132,7 @@
           <div class="form-group">
             <label class="form-label" for="openclaw-url">OpenClaw Base URL</label>
             <div class="settings-row">
-              <input type="url" id="openclaw-url" class="form-input" value="http://localhost:8080" placeholder="http://localhost:8080" />
+              <input type="url" id="openclaw-url" class="form-input" value="/api/openclaw" placeholder="/api/openclaw" />
               <button class="btn btn-sm" onclick="testConnection('openclaw')" aria-label="Test OpenClaw connection">Test</button>
               <span class="conn-status" id="openclaw-conn-status"></span>
             </div>
@@ -1745,8 +1746,117 @@ function animateNumber(elId, newVal, suffix = '') {
   }, 25);
 }
 
-function updateMetrics() {
-  // Simulated metric deltas
+function _setConnIndicator(ok) {
+  const el = document.getElementById('metrics-conn-indicator');
+  if (!el) return;
+  if (ok) {
+    el.textContent = '⬤ live';
+    el.style.color = 'var(--status-done)';
+  } else {
+    el.textContent = '⬤ offline';
+    el.style.color = 'var(--status-failed)';
+  }
+}
+
+function _applyMetrics(data) {
+  _setConnIndicator(true);
+
+  const cpu = data.cpu_percent != null ? data.cpu_percent : null;
+  const ram = data.ram || {};
+  const disk = data.disk || {};
+  const uptime = data.uptime || {};
+  const gpu = data.gpu || {};
+  const ollama = data.ollama || {};
+
+  // CPU
+  if (cpu != null) {
+    animateNumber('cpu-val', Math.round(cpu));
+    const cpuBar = document.getElementById('cpu-bar');
+    if (cpuBar) cpuBar.style.width = cpu.toFixed(0) + '%';
+    const cpuSub = document.getElementById('cpu-sub');
+    if (cpuSub) cpuSub.textContent = `${cpu.toFixed(1)}% utilisation`;
+    cpuHistory.push(cpu);
+    cpuHistory.shift();
+    if (cpuChart) { cpuChart.data.datasets[0].data = [...cpuHistory]; cpuChart.update('none'); }
+    const cpuCur = document.getElementById('cpu-chart-cur');
+    if (cpuCur) cpuCur.textContent = Math.round(cpu);
+  }
+
+  // RAM
+  if (ram.used_gb != null) {
+    animateNumber('ram-val', Math.round(ram.used_gb * 10) / 10);
+    const ramBar = document.getElementById('ram-bar');
+    if (ramBar) ramBar.style.width = (ram.percent || 0).toFixed(0) + '%';
+    const ramSub = document.getElementById('ram-sub');
+    if (ramSub) ramSub.textContent = `of ${ram.total_gb} GB · ${ram.percent}%`;
+  }
+
+  // GPU
+  const gpuLoad = gpu.utilization_gpu;
+  const gpuTemp = gpu.temperature;
+  const vramUsed = gpu.memory_used_mb != null ? gpu.memory_used_mb / 1024 : null;
+  const vramTotal = gpu.memory_total_mb != null ? gpu.memory_total_mb / 1024 : null;
+
+  if (gpuLoad != null) {
+    animateNumber('gpu-load-val', Math.round(gpuLoad));
+    const gpuLoadBar = document.getElementById('gpu-load-bar');
+    if (gpuLoadBar) gpuLoadBar.style.width = gpuLoad.toFixed(0) + '%';
+    gpuHistory.push(gpuLoad);
+    gpuHistory.shift();
+    if (gpuChart) { gpuChart.data.datasets[0].data = [...gpuHistory]; gpuChart.update('none'); }
+    const gpuCur = document.getElementById('gpu-chart-cur');
+    if (gpuCur) gpuCur.textContent = Math.round(gpuLoad);
+  }
+  if (gpuTemp != null) {
+    animateNumber('gpu-temp-val', Math.round(gpuTemp));
+    const gpuTempBar = document.getElementById('gpu-temp-bar');
+    if (gpuTempBar) gpuTempBar.style.width = gpuTemp.toFixed(0) + '%';
+    const tempSub = document.getElementById('gpu-temp-sub');
+    if (tempSub) {
+      if (gpuTemp > 80) tempSub.textContent = 'High temperature';
+      else if (gpuTemp > 73) tempSub.textContent = 'Warm';
+      else tempSub.textContent = 'Normal';
+    }
+  }
+  if (vramUsed != null) {
+    animateNumber('vram-val', Math.round(vramUsed * 10) / 10);
+    const vramBar = document.getElementById('vram-bar');
+    if (vramBar && vramTotal) vramBar.style.width = ((vramUsed / vramTotal) * 100).toFixed(0) + '%';
+    const vramSub = document.getElementById('vram-sub');
+    if (vramSub && vramTotal) vramSub.textContent = `of ${vramTotal.toFixed(1)} GB · ${((vramUsed / vramTotal) * 100).toFixed(0)}%`;
+  }
+
+  // Disk
+  if (disk.used_gb != null) {
+    animateNumber('disk-val', Math.round(disk.used_gb));
+    const diskSub = document.getElementById('disk-sub');
+    if (diskSub) diskSub.textContent = `of ${disk.total_gb} GB · ${disk.percent}%`;
+    const diskBar = document.getElementById('disk-bar');
+    if (diskBar) diskBar.style.width = (disk.percent || 0).toFixed(0) + '%';
+  }
+
+  // Uptime
+  if (uptime.days != null) {
+    const uptimeEl = document.getElementById('uptime-val');
+    if (uptimeEl) uptimeEl.textContent = `${uptime.days}d ${uptime.hours}h ${uptime.minutes}m`;
+  }
+
+  // Ollama loaded model
+  if (ollama.models && ollama.models.length > 0) {
+    const infoModel = document.getElementById('info-model');
+    if (infoModel) infoModel.textContent = ollama.models[0];
+  }
+
+  // Last updated timestamp
+  const lu = document.getElementById('last-updated');
+  if (lu) {
+    const d = new Date();
+    lu.textContent = 'Updated ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+  }
+}
+
+function _mockMetricsDelta() {
+  // Fallback: simulate small deltas on previous values (same as original behaviour)
   const newCpu = Math.max(5, Math.min(95, parseFloat(document.getElementById('cpu-val').textContent || 23) + (Math.random() * 10 - 5)));
   const newGpuLoad = Math.max(60, Math.min(99, parseFloat(document.getElementById('gpu-load-val').textContent || 84) + (Math.random() * 8 - 4)));
   const newGpuTemp = Math.max(60, Math.min(85, parseFloat(document.getElementById('gpu-temp-val').textContent || 71) + (Math.random() * 4 - 2)));
@@ -1779,20 +1889,13 @@ function updateMetrics() {
     else tempSub.textContent = 'Normal · Fan 62%';
   }
 
-  // Update charts
   cpuHistory.push(newCpu);
   cpuHistory.shift();
   gpuHistory.push(newGpuLoad);
   gpuHistory.shift();
 
-  if (cpuChart) {
-    cpuChart.data.datasets[0].data = [...cpuHistory];
-    cpuChart.update('none');
-  }
-  if (gpuChart) {
-    gpuChart.data.datasets[0].data = [...gpuHistory];
-    gpuChart.update('none');
-  }
+  if (cpuChart) { cpuChart.data.datasets[0].data = [...cpuHistory]; cpuChart.update('none'); }
+  if (gpuChart) { gpuChart.data.datasets[0].data = [...gpuHistory]; gpuChart.update('none'); }
 
   const cpuCur = document.getElementById('cpu-chart-cur');
   if (cpuCur) cpuCur.textContent = Math.round(newCpu);
@@ -1806,21 +1909,45 @@ function updateMetrics() {
   }
 }
 
+function _fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
+function updateMetrics() {
+  _fetchWithTimeout('/api/metrics', 4000)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(data => _applyMetrics(data))
+    .catch(() => {
+      _setConnIndicator(false);
+      _mockMetricsDelta();
+    });
+}
+
 /* ════════════════════════════════════════════
    SETTINGS
 ════════════════════════════════════════════ */
 function testConnection(service) {
   const statusId = service + '-conn-status';
+  const urlId = service === 'ollama' ? 'ollama-url' : 'openclaw-url';
   const el = document.getElementById(statusId);
-  if (!el) return;
+  const urlEl = document.getElementById(urlId);
+  if (!el || !urlEl) return;
   el.textContent = 'Testing…';
   el.className = 'conn-status';
-  setTimeout(() => {
-    // Mock: ollama succeeds, openclaw randomly fails sometimes
-    const success = service === 'ollama' ? true : Math.random() > 0.3;
-    el.textContent = success ? '✓ Connected' : '✗ Unreachable';
-    el.className = 'conn-status ' + (success ? 'conn-ok' : 'conn-err');
-  }, 900);
+
+  const base = urlEl.value.replace(/\/$/, '');
+  const testPath = service === 'ollama' ? base + '/api/tags' : base + '/health';
+  _fetchWithTimeout(testPath, 5000)
+    .then(r => {
+      el.textContent = r.ok ? '✓ Connected' : '✗ HTTP ' + r.status;
+      el.className = 'conn-status ' + (r.ok ? 'conn-ok' : 'conn-err');
+    })
+    .catch(() => {
+      el.textContent = '✗ Unreachable';
+      el.className = 'conn-status conn-err';
+    });
 }
 
 function toggleTheme(isLight) {
