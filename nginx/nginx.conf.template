@@ -38,6 +38,9 @@ http {
         listen 443 ssl;
         server_name _;
 
+        # If a client sends plain HTTP to the HTTPS port, redirect instead of 400.
+        error_page 497 =301 https://$host$request_uri;
+
         ssl_certificate     /etc/nginx/ssl/cert.pem;
         ssl_certificate_key /etc/nginx/ssl/key.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
@@ -46,7 +49,7 @@ http {
         ssl_session_timeout 10m;
 
         # Security headers
-        add_header Content-Security-Policy  "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';" always;
+        add_header Content-Security-Policy  "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com https://r2cdn.perplexity.ai; img-src 'self' data:; connect-src 'self';" always;
         add_header X-Frame-Options          "DENY" always;
         add_header X-Content-Type-Options   "nosniff" always;
         add_header Referrer-Policy          "no-referrer" always;
