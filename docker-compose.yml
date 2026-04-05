@@ -1,0 +1,76 @@
+services:
+
+  # ── Static dashboard served by nginx with HTTPS ──────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM nginx:1.27-alpine
+        RUN apk add --no-cache openssl gettext
+        COPY nginx/nginx.conf.template /etc/nginx/nginx.conf.template
+        COPY nginx/entrypoint.sh /entrypoint.sh
+        COPY dashboard.html /usr/share/nginx/html/dashboard.html
+        RUN chmod +x /entrypoint.sh \
+            && mkdir -p /etc/nginx/ssl /var/cache/nginx /var/run \
+            && chown -R nginx:nginx /etc/nginx/ssl /var/cache/nginx /var/log/nginx /var/run
+    entrypoint: ["/entrypoint.sh"]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - OLLAMA_HOST=${OLLAMA_HOST:-192.168.1.100}
+      - OLLAMA_PORT=${OLLAMA_PORT:-11434}
+      - OPENCLAW_HOST=${OPENCLAW_HOST:-192.168.1.100}
+      - OPENCLAW_PORT=${OPENCLAW_PORT:-3000}
+    depends_on:
+      - metrics-proxy
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - nginx_ssl:/etc/nginx/ssl
+      - nginx_cache:/var/cache/nginx
+      - nginx_run:/var/run
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    user: "101"   # nginx UID in nginx:alpine
+    restart: unless-stopped
+
+  # ── Read-only metrics API (internal only) ────────────────────
+  metrics-proxy:
+    build:
+      context: metrics-proxy
+    environment:
+      - OLLAMA_HOST=${OLLAMA_HOST:-192.168.1.100}
+      - OLLAMA_PORT=${OLLAMA_PORT:-11434}
+      - OPENCLAW_HOST=${OPENCLAW_HOST:-192.168.1.100}
+      - OPENCLAW_PORT=${OPENCLAW_PORT:-3000}
+      - PYTHONDONTWRITEBYTECODE=1
+    expose:
+      - "9090"       # internal only — NOT published to host
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    user: "65534"  # nobody
+    restart: unless-stopped
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  nginx_ssl:
+  nginx_cache:
+  nginx_run:

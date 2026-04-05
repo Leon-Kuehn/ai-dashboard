@@ -1,0 +1,101 @@
+worker_processes  auto;
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    sendfile        on;
+    keepalive_timeout  65;
+    server_tokens   off;
+
+    # Gzip
+    gzip on;
+    gzip_types text/html text/css application/javascript application/json;
+    gzip_min_length 256;
+
+    # Upstream services (resolved via Docker internal DNS)
+    upstream metrics_proxy {
+        server metrics-proxy:9090;
+    }
+
+    # ── HTTP → HTTPS redirect ──────────────────────────────────
+    server {
+        listen 80;
+        server_name _;
+        return 301 https://$host$request_uri;
+    }
+
+    # ── HTTPS ─────────────────────────────────────────────────
+    server {
+        listen 443 ssl;
+        server_name _;
+
+        ssl_certificate     /etc/nginx/ssl/cert.pem;
+        ssl_certificate_key /etc/nginx/ssl/key.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+        ssl_ciphers         HIGH:!aNULL:!MD5;
+        ssl_session_cache   shared:SSL:10m;
+        ssl_session_timeout 10m;
+
+        # Security headers
+        add_header Content-Security-Policy  "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';" always;
+        add_header X-Frame-Options          "DENY" always;
+        add_header X-Content-Type-Options   "nosniff" always;
+        add_header Referrer-Policy          "no-referrer" always;
+        add_header Permissions-Policy       "camera=(), microphone=(), geolocation=()" always;
+
+        # Only allow GET and HEAD
+        if ($request_method !~ ^(GET|HEAD)$) {
+            return 405;
+        }
+
+        root  /usr/share/nginx/html;
+        index dashboard.html;
+
+        # Disable directory listing
+        autoindex off;
+
+        # Static files
+        location / {
+            try_files $uri $uri/ /dashboard.html;
+        }
+
+        # Proxy: metrics
+        location /api/metrics {
+            proxy_pass         http://metrics_proxy/metrics;
+            proxy_set_header   Host $host;
+            proxy_read_timeout 5s;
+        }
+
+        # Proxy: metrics health
+        location /api/health {
+            proxy_pass         http://metrics_proxy/health;
+            proxy_set_header   Host $host;
+            proxy_read_timeout 5s;
+        }
+
+        # Proxy: Ollama
+        location /api/ollama/ {
+            resolver           127.0.0.11 valid=30s;
+            set $ollama_upstream http://${OLLAMA_HOST}:${OLLAMA_PORT};
+            proxy_pass         $ollama_upstream/;
+            proxy_set_header   Host ${OLLAMA_HOST};
+            proxy_read_timeout 120s;
+        }
+
+        # Proxy: OpenClaw
+        location /api/openclaw/ {
+            resolver           127.0.0.11 valid=30s;
+            set $openclaw_upstream http://${OPENCLAW_HOST}:${OPENCLAW_PORT};
+            proxy_pass         $openclaw_upstream/;
+            proxy_set_header   Host ${OPENCLAW_HOST};
+            proxy_read_timeout 30s;
+        }
+    }
+}
