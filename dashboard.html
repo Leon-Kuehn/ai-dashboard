@@ -1,0 +1,1930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenClaw — AI Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    /* ── CSS Custom Properties ── */
+    :root {
+      --bg-base: #0f0f0d;
+      --bg-panel: #141412;
+      --bg-card: #1c1b19;
+      --bg-input: #232220;
+      --border: #2a2925;
+      --accent: #4f98a3;
+      --accent-hover: #5ba8b4;
+      --text-primary: #e8e3d8;
+      --text-secondary: #a09a8e;
+      --text-muted: #6b6560;
+      --status-done: #4a9e6b;
+      --status-running: #b8922a;
+      --status-failed: #9e4a4a;
+      --status-queued: #4a6b9e;
+      --font-body: 'Inter', sans-serif;
+      --font-display: 'Instrument Serif', serif;
+      --sidebar-width: 220px;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --transition: 0.18s ease;
+    }
+    [data-theme="light"] {
+      --bg-base: #f5f3ef;
+      --bg-panel: #ffffff;
+      --bg-card: #f0ede8;
+      --bg-input: #e8e5e0;
+      --border: #d4cfc8;
+      --text-primary: #1a1916;
+      --text-secondary: #5a5550;
+      --text-muted: #8a857e;
+    }
+
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 14px; }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-base);
+      color: var(--text-primary);
+      line-height: 1.5;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    button { cursor: pointer; font-family: var(--font-body); }
+    input, textarea, select {
+      font-family: var(--font-body);
+      font-size: 0.875rem;
+      color: var(--text-primary);
+    }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-base); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* ── Layout ── */
+    #app { display: flex; min-height: 100vh; }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      position: fixed;
+      left: 0; top: 0; bottom: 0;
+      width: var(--sidebar-width);
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      overflow: hidden;
+    }
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 20px 16px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sidebar-brand-text { line-height: 1.2; }
+    .sidebar-brand-name {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      color: var(--text-primary);
+      letter-spacing: 0.01em;
+    }
+    .sidebar-brand-sub {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .sidebar-nav {
+      flex: 1;
+      padding: 12px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      overflow-y: auto;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: var(--radius-md);
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background var(--transition), color var(--transition);
+      width: 100%;
+      text-align: left;
+    }
+    .nav-item:hover { background: var(--bg-card); color: var(--text-primary); }
+    .nav-item.active {
+      background: var(--bg-card);
+      color: var(--accent);
+      border-left: 2px solid var(--accent);
+      padding-left: 8px;
+    }
+    .nav-item .nav-icon { width: 16px; height: 16px; flex-shrink: 0; }
+    .sidebar-footer {
+      padding: 12px 8px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sidebar-footer .nav-item { color: var(--text-muted); }
+
+    /* ── Main Content ── */
+    #content {
+      margin-left: var(--sidebar-width);
+      flex: 1;
+      min-height: 100vh;
+      position: relative;
+      background: var(--bg-base);
+    }
+
+    /* ── Sections ── */
+    .section {
+      display: none;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.22s ease, transform 0.22s ease;
+      min-height: 100vh;
+    }
+    .section.active {
+      display: flex;
+      flex-direction: column;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ── Page Header ── */
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-panel);
+      flex-shrink: 0;
+    }
+    .page-title {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      color: var(--text-primary);
+    }
+    .page-subtitle { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-size: 0.8rem;
+      font-weight: 500;
+      transition: background var(--transition), border-color var(--transition), color var(--transition);
+      cursor: pointer;
+    }
+    .btn:hover { background: var(--bg-input); border-color: var(--text-muted); }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn-sm { padding: 5px 10px; font-size: 0.75rem; }
+    .btn-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px; height: 32px;
+      padding: 0;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background var(--transition), color var(--transition);
+    }
+    .btn-icon:hover { background: var(--bg-input); color: var(--text-primary); }
+
+    /* ── Form Elements ── */
+    .form-input {
+      width: 100%;
+      padding: 8px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      transition: border-color var(--transition);
+    }
+    .form-input:focus { outline: none; border-color: var(--accent); }
+    .form-input::placeholder { color: var(--text-muted); }
+    .form-label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .form-group { margin-bottom: 14px; }
+    select.form-input { appearance: none; cursor: pointer; }
+
+    /* ────────────────────────────────────────────────
+       SECTION: CHAT
+    ──────────────────────────────────────────────── */
+    #chat-section { flex-direction: row !important; }
+
+    .chat-threads {
+      width: 260px;
+      min-width: 260px;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      flex-shrink: 0;
+    }
+    .chat-threads-header {
+      padding: 16px 12px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .chat-threads-header h2 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .thread-search-wrap { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .thread-search {
+      width: 100%;
+      padding: 6px 10px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 0.8rem;
+    }
+    .thread-search:focus { outline: none; border-color: var(--accent); }
+    .thread-search::placeholder { color: var(--text-muted); }
+    .thread-list { flex: 1; overflow-y: auto; padding: 6px 6px; }
+    .thread-item {
+      padding: 10px 10px;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: background var(--transition);
+      margin-bottom: 2px;
+      border: 1px solid transparent;
+    }
+    .thread-item:hover { background: var(--bg-card); }
+    .thread-item.active { background: var(--bg-card); border-color: var(--border); }
+    .thread-title { font-size: 0.83rem; font-weight: 500; color: var(--text-primary); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .thread-preview { font-size: 0.76rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+    .thread-meta { font-size: 0.7rem; color: var(--text-muted); }
+
+    .chat-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .chat-header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-panel);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .chat-header-title { font-weight: 600; font-size: 0.9rem; flex: 1; }
+    .model-select-wrap { position: relative; display: flex; align-items: center; gap: 6px; }
+    .model-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+    .model-badge select {
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0 2px;
+      appearance: none;
+    }
+    .model-badge select:focus { outline: none; }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .message { display: flex; flex-direction: column; max-width: 72%; animation: msgIn 0.2s ease; }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .message.user { align-self: flex-end; align-items: flex-end; }
+    .message.assistant { align-self: flex-start; align-items: flex-start; }
+    .message-meta { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; }
+    .message-bubble {
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+    .message.user .message-bubble {
+      background: var(--accent);
+      color: #fff;
+      border-bottom-right-radius: 2px;
+    }
+    .message.assistant .message-bubble {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      border-bottom-left-radius: 2px;
+    }
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      width: fit-content;
+    }
+    .typing-dot {
+      width: 6px; height: 6px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      animation: typingBounce 1.2s infinite ease-in-out;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingBounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+      30% { transform: translateY(-5px); opacity: 1; }
+    }
+
+    .chat-input-area {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-panel);
+      flex-shrink: 0;
+    }
+    .chat-input-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 8px 10px;
+      transition: border-color var(--transition);
+    }
+    .chat-input-row:focus-within { border-color: var(--accent); }
+    #chat-textarea {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      resize: none;
+      line-height: 1.5;
+      min-height: 22px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    #chat-textarea:focus { outline: none; }
+    #chat-textarea::placeholder { color: var(--text-muted); }
+    .chat-input-actions { display: flex; align-items: center; gap: 6px; }
+
+    /* ────────────────────────────────────────────────
+       SECTION: TASKS
+    ──────────────────────────────────────────────── */
+    .tasks-body { flex: 1; padding: 20px 24px; overflow-y: auto; }
+    .filter-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+    .filter-tab {
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .filter-tab:hover { background: var(--bg-card); color: var(--text-primary); }
+    .filter-tab.active {
+      background: var(--bg-card);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .task-list { display: flex; flex-direction: column; gap: 2px; }
+    .task-row {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      transition: border-color var(--transition);
+    }
+    .task-row:hover { border-color: var(--text-muted); }
+    .task-row-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      cursor: pointer;
+    }
+    .task-title { flex: 1; font-size: 0.875rem; font-weight: 500; color: var(--text-primary); }
+    .task-timestamp { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .badge-done { background: rgba(74,158,107,0.12); color: var(--status-done); }
+    .badge-running { background: rgba(184,146,42,0.12); color: var(--status-running); }
+    .badge-failed { background: rgba(158,74,74,0.12); color: var(--status-failed); }
+    .badge-queued { background: rgba(74,107,158,0.12); color: var(--status-queued); }
+    .task-progress-wrap { padding: 0 16px 10px; }
+    .task-progress-bar-bg {
+      height: 3px;
+      background: var(--bg-input);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .task-progress-bar {
+      height: 100%;
+      background: var(--status-running);
+      border-radius: 2px;
+      transition: width 0.4s ease;
+    }
+    .task-progress-bar.animate {
+      animation: progressPulse 2s ease-in-out infinite;
+    }
+    @keyframes progressPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .task-progress-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+    .task-detail {
+      display: none;
+      padding: 0 16px 14px;
+      border-top: 1px solid var(--border);
+      margin-top: 2px;
+    }
+    .task-detail.open { display: block; }
+    .task-log {
+      background: var(--bg-base);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      max-height: 180px;
+      overflow-y: auto;
+      white-space: pre;
+    }
+    .log-line-time { color: var(--text-muted); }
+    .log-line-err { color: var(--status-failed); }
+    .log-line-ok { color: var(--status-done); }
+    .chevron-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      padding: 2px;
+      cursor: pointer;
+      transition: color var(--transition), transform var(--transition);
+    }
+    .chevron-btn.open { transform: rotate(180deg); color: var(--accent); }
+
+    /* ────────────────────────────────────────────────
+       SECTION: SYSTEM MONITOR
+    ──────────────────────────────────────────────── */
+    .monitor-body { flex: 1; padding: 20px 24px; overflow-y: auto; }
+    .monitor-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .monitor-title {
+      font-family: var(--font-display);
+      font-size: 1.3rem;
+      color: var(--text-primary);
+    }
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      background: rgba(74,158,107,0.1);
+      border: 1px solid rgba(74,158,107,0.25);
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--status-done);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .live-dot {
+      width: 6px; height: 6px;
+      background: var(--status-done);
+      border-radius: 50%;
+      animation: livePulse 2s ease-in-out infinite;
+    }
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Skeleton */
+    .skeleton {
+      background: var(--bg-card);
+      border-radius: var(--radius-md);
+      position: relative;
+      overflow: hidden;
+    }
+    .skeleton::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%);
+      animation: shimmer 1.2s ease-in-out infinite;
+    }
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
+    .metrics-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .info-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+
+    .metric-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+    }
+    .metric-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .metric-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1;
+      margin-bottom: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .metric-value .metric-unit {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+    .metric-sub { font-size: 0.72rem; color: var(--text-muted); }
+    .metric-bar-bg {
+      height: 3px;
+      background: var(--bg-input);
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .metric-bar {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.6s ease;
+    }
+    .bar-teal { background: var(--accent); }
+    .bar-yellow { background: var(--status-running); }
+    .bar-red { background: var(--status-failed); }
+
+    .chart-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+    }
+    .chart-card-header { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+    .chart-card-title { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+    .chart-card-value { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+    .chart-wrap { height: 120px; position: relative; }
+
+    .info-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+    }
+    .info-card-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 4px; }
+    .info-card-value { font-size: 0.85rem; font-weight: 500; color: var(--text-primary); }
+
+    /* Skeleton placeholders */
+    .skel-card { height: 90px; }
+    .skel-chart { height: 160px; }
+
+    /* ────────────────────────────────────────────────
+       SECTION: SETTINGS
+    ──────────────────────────────────────────────── */
+    .settings-body { flex: 1; padding: 24px; overflow-y: auto; max-width: 680px; }
+    .settings-section { margin-bottom: 32px; }
+    .settings-section-title {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      color: var(--text-primary);
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-row { display: flex; align-items: center; gap: 10px; }
+    .settings-row .form-input { flex: 1; }
+    .conn-status {
+      font-size: 0.75rem;
+      font-weight: 500;
+      white-space: nowrap;
+      min-width: 90px;
+    }
+    .conn-ok { color: var(--status-done); }
+    .conn-err { color: var(--status-failed); }
+
+    /* Toggle Switch */
+    .toggle-wrap { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; }
+    .toggle-label { font-size: 0.875rem; color: var(--text-primary); }
+    .toggle-label-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+    .toggle {
+      position: relative;
+      width: 40px; height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background var(--transition), border-color var(--transition);
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 2px; top: 2px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+    .toggle input:checked + .toggle-slider {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .toggle input:checked + .toggle-slider::before {
+      transform: translateX(18px);
+      background: #fff;
+    }
+
+    .password-wrap { position: relative; }
+    .password-wrap .form-input { padding-right: 38px; }
+    .password-toggle {
+      position: absolute;
+      right: 8px; top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px;
+      display: flex;
+      align-items: center;
+    }
+    .password-toggle:hover { color: var(--text-secondary); }
+
+    .settings-save-row { margin-top: 8px; display: flex; align-items: center; gap: 12px; }
+    .save-confirmation {
+      font-size: 0.8rem;
+      color: var(--status-done);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .save-confirmation.show { opacity: 1; }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+      .info-row { grid-template-columns: repeat(2, 1fr); }
+      .charts-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 700px) {
+      #sidebar { width: 56px; }
+      .sidebar-brand-text { display: none; }
+      .nav-item span.nav-label { display: none; }
+      .nav-item { justify-content: center; padding: 9px; }
+      .nav-item.active { padding-left: 9px; border-left: none; }
+      #content { margin-left: 56px; }
+      #chat-section { flex-direction: column !important; }
+      .chat-threads { width: 100%; min-width: 0; height: 200px; position: static; border-right: none; border-bottom: 1px solid var(--border); }
+      .thread-list { flex-direction: row; display: flex; flex-wrap: nowrap; overflow-x: auto; padding: 6px; }
+      .thread-item { min-width: 160px; }
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+      .metrics-grid-2 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 375px) {
+      .metrics-grid { grid-template-columns: 1fr 1fr; }
+      .filter-tab { font-size: 0.72rem; padding: 4px 10px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ── -->
+  <nav id="sidebar" role="navigation" aria-label="Main navigation">
+    <div class="sidebar-brand">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+        <rect x="8" y="8" width="12" height="12" rx="2" stroke="#4f98a3" stroke-width="1.5"/>
+        <rect x="11" y="11" width="6" height="6" fill="#4f98a3" rx="1"/>
+        <line x1="14" y1="2" x2="14" y2="8" stroke="#4f98a3" stroke-width="1.5"/>
+        <line x1="14" y1="20" x2="14" y2="26" stroke="#4f98a3" stroke-width="1.5"/>
+        <line x1="2" y1="14" x2="8" y2="14" stroke="#4f98a3" stroke-width="1.5"/>
+        <line x1="20" y1="14" x2="26" y2="14" stroke="#4f98a3" stroke-width="1.5"/>
+        <line x1="8" y1="8" x2="4" y2="4" stroke="#4f98a3" stroke-width="1.5"/>
+        <line x1="20" y1="8" x2="24" y2="4" stroke="#4f98a3" stroke-width="1.5"/>
+        <line x1="8" y1="20" x2="4" y2="24" stroke="#4f98a3" stroke-width="1.5"/>
+        <line x1="20" y1="20" x2="24" y2="24" stroke="#4f98a3" stroke-width="1.5"/>
+      </svg>
+      <div class="sidebar-brand-text">
+        <div class="sidebar-brand-name">OpenClaw</div>
+        <div class="sidebar-brand-sub">AI Dashboard</div>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <button class="nav-item active" onclick="navigateTo('chat')" data-section="chat" aria-current="page">
+        <i data-lucide="message-square" class="nav-icon" aria-hidden="true"></i>
+        <span class="nav-label">Chat</span>
+      </button>
+      <button class="nav-item" onclick="navigateTo('tasks')" data-section="tasks">
+        <i data-lucide="list-checks" class="nav-icon" aria-hidden="true"></i>
+        <span class="nav-label">Tasks</span>
+      </button>
+      <button class="nav-item" onclick="navigateTo('monitor')" data-section="monitor">
+        <i data-lucide="activity" class="nav-icon" aria-hidden="true"></i>
+        <span class="nav-label">Monitor</span>
+      </button>
+      <button class="nav-item" onclick="navigateTo('settings')" data-section="settings">
+        <i data-lucide="settings" class="nav-icon" aria-hidden="true"></i>
+        <span class="nav-label">Settings</span>
+      </button>
+    </div>
+    <div class="sidebar-footer">
+      <div class="nav-item" style="cursor:default;">
+        <i data-lucide="server" class="nav-icon" aria-hidden="true"></i>
+        <span class="nav-label" style="font-size:0.72rem;">localhost</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Main Content ── -->
+  <main id="content">
+
+    <!-- ════════════════════════════════════════════
+         SECTION: CHAT
+    ═════════════════════════════════════════════ -->
+    <section id="chat-section" class="section active" aria-label="Chat">
+
+      <!-- Thread List -->
+      <aside class="chat-threads" aria-label="Conversation threads">
+        <div class="chat-threads-header">
+          <h2>Threads</h2>
+          <button class="btn btn-sm btn-primary" onclick="newChat()" aria-label="New chat">
+            <i data-lucide="plus" style="width:12px;height:12px;" aria-hidden="true"></i>
+            New
+          </button>
+        </div>
+        <div class="thread-search-wrap">
+          <input class="thread-search" type="search" placeholder="Search threads…" aria-label="Search threads" oninput="searchThreads(this.value)" />
+        </div>
+        <div class="thread-list" id="thread-list" role="list">
+          <div class="thread-item active" role="listitem" onclick="selectThread(0)" tabindex="0" onkeydown="if(event.key==='Enter')selectThread(0)">
+            <div class="thread-title">llama3 performance Q&amp;A</div>
+            <div class="thread-preview">What are the context window limits?</div>
+            <div class="thread-meta">Today, 14:32</div>
+          </div>
+          <div class="thread-item" role="listitem" onclick="selectThread(1)" tabindex="0" onkeydown="if(event.key==='Enter')selectThread(1)">
+            <div class="thread-title">Code review assistance</div>
+            <div class="thread-preview">Here's the refactored function…</div>
+            <div class="thread-meta">Today, 11:07</div>
+          </div>
+          <div class="thread-item" role="listitem" onclick="selectThread(2)" tabindex="0" onkeydown="if(event.key==='Enter')selectThread(2)">
+            <div class="thread-title">Research summary pipeline</div>
+            <div class="thread-preview">Extracted 14 key findings from…</div>
+            <div class="thread-meta">Yesterday, 09:55</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Chat Main -->
+      <div class="chat-main">
+        <div class="chat-header">
+          <div class="chat-header-title" id="chat-thread-title">llama3 performance Q&amp;A</div>
+          <div class="model-badge">
+            <i data-lucide="cpu" style="width:12px;height:12px;color:var(--accent);" aria-hidden="true"></i>
+            <select id="model-select" aria-label="Select model" onchange="onModelChange(this.value)">
+              <option value="llama3:8b" selected>llama3:8b</option>
+              <option value="mistral:7b">mistral:7b</option>
+              <option value="codellama:13b">codellama:13b</option>
+              <option value="phi3:mini">phi3:mini</option>
+            </select>
+          </div>
+          <button class="btn-icon" onclick="clearChat()" title="Clear conversation" aria-label="Clear conversation">
+            <i data-lucide="trash-2" style="width:14px;height:14px;" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-label="Chat messages">
+          <div class="message assistant">
+            <div class="message-meta">llama3:8b · 14:30</div>
+            <div class="message-bubble">Hello! I'm running as <strong>llama3:8b</strong> via Ollama on this server. I have an 8,192-token context window and was trained on data up to March 2024. How can I help you today?</div>
+          </div>
+          <div class="message user">
+            <div class="message-meta">14:31</div>
+            <div class="message-bubble">What are the context window limits for llama3?</div>
+          </div>
+          <div class="message assistant">
+            <div class="message-meta">llama3:8b · 14:32</div>
+            <div class="message-bubble">The Llama 3 family supports the following context windows:<br><br>
+              • <strong>llama3:8b</strong> — 8,192 tokens (default), extendable to ~128K with RoPE scaling<br>
+              • <strong>llama3:70b</strong> — 8,192 tokens (same architecture)<br><br>
+              In practice, Ollama defaults to 2,048 tokens for generation but you can override this via the <code>num_ctx</code> parameter in your Modelfile or API request. Keep in mind that larger contexts increase VRAM usage substantially.</div>
+          </div>
+        </div>
+
+        <div class="chat-input-area">
+          <div class="chat-input-row">
+            <button class="btn-icon" style="border:none;background:transparent;width:28px;height:28px;" title="Attach file" aria-label="Attach file">
+              <i data-lucide="paperclip" style="width:14px;height:14px;color:var(--text-muted);" aria-hidden="true"></i>
+            </button>
+            <textarea
+              id="chat-textarea"
+              placeholder="Message llama3:8b…"
+              rows="1"
+              aria-label="Message input"
+              onkeydown="handleChatKey(event)"
+              oninput="autoResizeTextarea(this)"
+            ></textarea>
+            <div class="chat-input-actions">
+              <button class="btn btn-primary btn-sm" onclick="sendMessage()" aria-label="Send message">
+                <i data-lucide="send" style="width:12px;height:12px;" aria-hidden="true"></i>
+                Send
+              </button>
+            </div>
+          </div>
+          <div style="font-size:0.7rem;color:var(--text-muted);margin-top:6px;">Enter to send · Shift+Enter for new line</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════
+         SECTION: TASKS
+    ═════════════════════════════════════════════ -->
+    <section id="tasks-section" class="section" aria-label="Tasks">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Tasks</h1>
+          <div class="page-subtitle">Manage and monitor AI task queue</div>
+        </div>
+        <button class="btn btn-primary" onclick="showNewTaskModal()" aria-label="Create new task">
+          <i data-lucide="plus" style="width:13px;height:13px;" aria-hidden="true"></i>
+          New Task
+        </button>
+      </div>
+      <div class="tasks-body">
+        <div class="filter-tabs" role="tablist" aria-label="Filter tasks">
+          <button class="filter-tab active" role="tab" aria-selected="true" onclick="filterTasks('all', this)">All</button>
+          <button class="filter-tab" role="tab" aria-selected="false" onclick="filterTasks('running', this)">Running</button>
+          <button class="filter-tab" role="tab" aria-selected="false" onclick="filterTasks('done', this)">Done</button>
+          <button class="filter-tab" role="tab" aria-selected="false" onclick="filterTasks('failed', this)">Failed</button>
+          <button class="filter-tab" role="tab" aria-selected="false" onclick="filterTasks('queued', this)">Queued</button>
+        </div>
+        <div class="task-list" id="task-list" role="list" aria-label="Task list"></div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════
+         SECTION: SYSTEM MONITOR
+    ═════════════════════════════════════════════ -->
+    <section id="monitor-section" class="section" aria-label="System Monitor">
+      <div class="monitor-body" id="monitor-body">
+        <div class="monitor-header-row">
+          <h1 class="monitor-title">System Monitor</h1>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="live-badge">
+              <div class="live-dot" aria-hidden="true"></div>
+              Live
+            </div>
+            <span id="last-updated" style="font-size:0.72rem;color:var(--text-muted);">–</span>
+          </div>
+        </div>
+
+        <!-- Skeleton overlays — hidden after load -->
+        <div id="monitor-skeleton" aria-hidden="true">
+          <div class="metrics-grid" style="margin-bottom:10px;">
+            <div class="skeleton skel-card"></div>
+            <div class="skeleton skel-card"></div>
+            <div class="skeleton skel-card"></div>
+            <div class="skeleton skel-card"></div>
+          </div>
+          <div class="metrics-grid-2" style="margin-bottom:10px;">
+            <div class="skeleton skel-card"></div>
+            <div class="skeleton skel-card"></div>
+          </div>
+          <div class="charts-grid" style="margin-bottom:10px;">
+            <div class="skeleton skel-chart"></div>
+            <div class="skeleton skel-chart"></div>
+          </div>
+        </div>
+
+        <!-- Real content — hidden during skeleton -->
+        <div id="monitor-real" style="display:none;">
+          <!-- Row 1: 4 stat cards -->
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-label">CPU Usage</div>
+              <div class="metric-value"><span id="cpu-val">23</span><span class="metric-unit">%</span></div>
+              <div class="metric-sub" id="cpu-sub">8-core · 3.4 GHz</div>
+              <div class="metric-bar-bg"><div class="metric-bar bar-teal" id="cpu-bar" style="width:23%"></div></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">RAM Usage</div>
+              <div class="metric-value"><span id="ram-val">12.4</span><span class="metric-unit">GB</span></div>
+              <div class="metric-sub" id="ram-sub">of 32 GB · 38%</div>
+              <div class="metric-bar-bg"><div class="metric-bar bar-teal" id="ram-bar" style="width:38%"></div></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">GPU Load</div>
+              <div class="metric-value"><span id="gpu-load-val">84</span><span class="metric-unit">%</span></div>
+              <div class="metric-sub">RTX 3060 Ti</div>
+              <div class="metric-bar-bg"><div class="metric-bar bar-yellow" id="gpu-load-bar" style="width:84%"></div></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">GPU Temp</div>
+              <div class="metric-value"><span id="gpu-temp-val">71</span><span class="metric-unit">°C</span></div>
+              <div class="metric-sub" id="gpu-temp-sub">Normal · Fan 62%</div>
+              <div class="metric-bar-bg"><div class="metric-bar bar-yellow" id="gpu-temp-bar" style="width:71%"></div></div>
+            </div>
+          </div>
+
+          <!-- Row 2: VRAM + Uptime/Disk -->
+          <div class="metrics-grid-2">
+            <div class="metric-card">
+              <div class="metric-label">VRAM Usage</div>
+              <div class="metric-value"><span id="vram-val">7.2</span><span class="metric-unit">GB</span></div>
+              <div class="metric-sub" id="vram-sub">of 8 GB · 90% — Model loaded</div>
+              <div class="metric-bar-bg"><div class="metric-bar bar-red" id="vram-bar" style="width:90%"></div></div>
+            </div>
+            <div class="metric-card" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">
+              <div>
+                <div class="metric-label">Uptime</div>
+                <div class="metric-value" style="font-size:1.15rem;" id="uptime-val">3d 14h 22m</div>
+                <div class="metric-sub">Server started Jan 18</div>
+              </div>
+              <div>
+                <div class="metric-label">Disk Usage</div>
+                <div class="metric-value" style="font-size:1.15rem;"><span id="disk-val">247</span><span class="metric-unit">GB</span></div>
+                <div class="metric-sub">of 1 TB · 24.7%</div>
+                <div class="metric-bar-bg" style="margin-top:6px;"><div class="metric-bar bar-teal" style="width:24.7%"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts -->
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-card-header">
+                <div class="chart-card-title">CPU History (60s)</div>
+                <div class="chart-card-value"><span id="cpu-chart-cur">23</span>%</div>
+              </div>
+              <div class="chart-wrap"><canvas id="cpu-chart" role="img" aria-label="CPU usage history chart"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-header">
+                <div class="chart-card-title">GPU Load History (60s)</div>
+                <div class="chart-card-value"><span id="gpu-chart-cur">84</span>%</div>
+              </div>
+              <div class="chart-wrap"><canvas id="gpu-chart" role="img" aria-label="GPU load history chart"></canvas></div>
+            </div>
+          </div>
+
+          <!-- Info row -->
+          <div class="info-row">
+            <div class="info-card">
+              <div class="info-card-label">Model Loaded</div>
+              <div class="info-card-value" id="info-model">llama3:8b</div>
+            </div>
+            <div class="info-card">
+              <div class="info-card-label">GPU</div>
+              <div class="info-card-value">NVIDIA RTX 3060 Ti</div>
+            </div>
+            <div class="info-card">
+              <div class="info-card-label">Driver Version</div>
+              <div class="info-card-value">535.154.05</div>
+            </div>
+            <div class="info-card">
+              <div class="info-card-label">Ollama Version</div>
+              <div class="info-card-value">0.1.32</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════
+         SECTION: SETTINGS
+    ═════════════════════════════════════════════ -->
+    <section id="settings-section" class="section" aria-label="Settings">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Settings</h1>
+          <div class="page-subtitle">Configure endpoints, models, and preferences</div>
+        </div>
+      </div>
+      <div class="settings-body">
+
+        <!-- API Endpoints -->
+        <div class="settings-section">
+          <h2 class="settings-section-title">API Endpoints</h2>
+          <div class="form-group">
+            <label class="form-label" for="ollama-url">Ollama Base URL</label>
+            <div class="settings-row">
+              <input type="url" id="ollama-url" class="form-input" value="http://localhost:11434" placeholder="http://localhost:11434" />
+              <button class="btn btn-sm" onclick="testConnection('ollama')" aria-label="Test Ollama connection">Test</button>
+              <span class="conn-status" id="ollama-conn-status"></span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="openclaw-url">OpenClaw Base URL</label>
+            <div class="settings-row">
+              <input type="url" id="openclaw-url" class="form-input" value="http://localhost:8080" placeholder="http://localhost:8080" />
+              <button class="btn btn-sm" onclick="testConnection('openclaw')" aria-label="Test OpenClaw connection">Test</button>
+              <span class="conn-status" id="openclaw-conn-status"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Model -->
+        <div class="settings-section">
+          <h2 class="settings-section-title">Model</h2>
+          <div class="form-group">
+            <label class="form-label" for="default-model">Default Model</label>
+            <select id="default-model" class="form-input">
+              <option value="llama3:8b" selected>llama3:8b</option>
+              <option value="mistral:7b">mistral:7b</option>
+              <option value="codellama:13b">codellama:13b</option>
+              <option value="phi3:mini">phi3:mini</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="context-length">Context Length (tokens)</label>
+            <input type="number" id="context-length" class="form-input" value="4096" min="512" max="131072" step="512" />
+          </div>
+        </div>
+
+        <!-- Appearance -->
+        <div class="settings-section">
+          <h2 class="settings-section-title">Appearance</h2>
+          <div class="toggle-wrap">
+            <div>
+              <div class="toggle-label">Light Mode</div>
+              <div class="toggle-label-sub">Switch to light colour scheme</div>
+            </div>
+            <label class="toggle" aria-label="Toggle light mode">
+              <input type="checkbox" id="theme-toggle" onchange="toggleTheme(this.checked)" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="toggle-wrap">
+            <div>
+              <div class="toggle-label">Compact Mode</div>
+              <div class="toggle-label-sub">Reduce padding and spacing</div>
+            </div>
+            <label class="toggle" aria-label="Toggle compact mode">
+              <input type="checkbox" id="compact-toggle" onchange="toggleCompact(this.checked)" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- API Authentication -->
+        <div class="settings-section">
+          <h2 class="settings-section-title">API Authentication</h2>
+          <div class="form-group">
+            <label class="form-label" for="api-key">API Key</label>
+            <div class="password-wrap">
+              <input type="password" id="api-key" class="form-input" placeholder="sk-••••••••••••••••" autocomplete="off" />
+              <button class="password-toggle" onclick="togglePassword('api-key', this)" aria-label="Show/hide API key">
+                <i data-lucide="eye" style="width:14px;height:14px;" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="bearer-token">Bearer Token</label>
+            <div class="password-wrap">
+              <input type="password" id="bearer-token" class="form-input" placeholder="Bearer token…" autocomplete="off" />
+              <button class="password-toggle" onclick="togglePassword('bearer-token', this)" aria-label="Show/hide bearer token">
+                <i data-lucide="eye" style="width:14px;height:14px;" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-save-row">
+          <button class="btn btn-primary" onclick="saveSettings()">
+            <i data-lucide="save" style="width:13px;height:13px;" aria-hidden="true"></i>
+            Save Settings
+          </button>
+          <span class="save-confirmation" id="save-confirmation" role="status" aria-live="polite">✓ Settings saved</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   OPENCLAW AI DASHBOARD — Main Script
+═══════════════════════════════════════════════════════════════ */
+
+/* ── State ── */
+let currentSection = 'chat';
+let cpuChart = null;
+let gpuChart = null;
+let monitorInterval = null;
+let activeThreadIndex = 0;
+
+/* ── CPU / GPU history arrays ── */
+let cpuHistory = Array(20).fill(0).map(() => Math.random() * 40 + 10);
+let gpuHistory = Array(20).fill(0).map(() => Math.random() * 30 + 70);
+
+/* ── Mock data ── */
+const threads = [
+  {
+    title: 'llama3 performance Q&A',
+    preview: 'What are the context window limits?',
+    timestamp: 'Today, 14:32',
+    messages: [
+      { role: 'assistant', text: 'Hello! I\'m running as <strong>llama3:8b</strong> via Ollama on this server. I have an 8,192-token context window and was trained on data up to March 2024. How can I help you today?', time: '14:30' },
+      { role: 'user', text: 'What are the context window limits for llama3?', time: '14:31' },
+      { role: 'assistant', text: 'The Llama 3 family supports the following context windows:<br><br>• <strong>llama3:8b</strong> — 8,192 tokens (default), extendable to ~128K with RoPE scaling<br>• <strong>llama3:70b</strong> — 8,192 tokens (same architecture)<br><br>In practice, Ollama defaults to 2,048 tokens for generation but you can override this via the <code>num_ctx</code> parameter in your Modelfile or API request. Keep in mind that larger contexts increase VRAM usage substantially.', time: '14:32' }
+    ]
+  },
+  {
+    title: 'Code review assistance',
+    preview: 'Here\'s the refactored function…',
+    timestamp: 'Today, 11:07',
+    messages: [
+      { role: 'user', text: 'Can you help me refactor this Python function for better readability?', time: '11:05' },
+      { role: 'assistant', text: 'Of course! Here\'s the refactored function with improved readability:<br><br>Key changes I made:<br>• Extracted the inner loop into a helper function<br>• Used list comprehension instead of manual appends<br>• Added type hints for clarity<br>• Renamed variables to be more descriptive<br><br>Would you like me to explain any of these changes in detail?', time: '11:06' },
+      { role: 'user', text: 'Here\'s the refactored function — looks good! Can you add docstrings?', time: '11:07' }
+    ]
+  },
+  {
+    title: 'Research summary pipeline',
+    preview: 'Extracted 14 key findings from…',
+    timestamp: 'Yesterday, 09:55',
+    messages: [
+      { role: 'user', text: 'Summarize the key findings from these 3 research papers on transformer architectures.', time: '09:50' },
+      { role: 'assistant', text: 'I\'ve analyzed all three papers. Here are the 14 key findings grouped by theme:<br><br><strong>Architecture Efficiency (5 findings):</strong><br>1. Sparse attention reduces compute by ~60% with minimal accuracy loss<br>2. Flash Attention v2 achieves near-linear memory scaling<br><br><strong>Training Dynamics (4 findings):</strong><br>3. Learning rate warmup critical for models >7B parameters<br>4. Gradient clipping at 1.0 prevents instability consistently<br><br><strong>Inference Optimization (5 findings):</strong><br>5. KV cache quantization to INT8 halves memory with <1% degradation<br>— and 9 more findings…', time: '09:55' }
+    ]
+  }
+];
+
+const mockTaskLogs = {
+  't1': `[2024-01-22 09:14:02] INFO  Task initialized: generate_quarterly_report
+[2024-01-22 09:14:03] INFO  Loading model: llama3:8b
+[2024-01-22 09:14:05] INFO  Model loaded successfully (7.2GB VRAM)
+[2024-01-22 09:14:05] INFO  Processing input: Q4 2023 financial data (2,847 rows)
+[2024-01-22 09:17:22] INFO  Generated executive summary (842 tokens)
+[2024-01-22 09:18:04] INFO  Generated section: Revenue Analysis
+[2024-01-22 09:19:11] INFO  Generated section: Cost Breakdown
+[2024-01-22 09:20:45] INFO  Generated section: YoY Comparison
+[2024-01-22 09:21:03] INFO  Report compiled: 4,201 words, 12 sections
+[2024-01-22 09:21:04] \x1b[32mINFO  Task completed successfully. Output saved to /reports/q4_2023.pdf\x1b[0m`,
+  't2': `[2024-01-22 13:45:00] INFO  Task initialized: analyze_codebase_security
+[2024-01-22 13:45:01] INFO  Loading model: codellama:13b
+[2024-01-22 13:45:08] INFO  Model loaded (11.4GB VRAM)
+[2024-01-22 13:45:09] INFO  Scanning repository: /projects/api-server (1,247 files)
+[2024-01-22 13:46:12] WARN  Potential SQL injection vector in auth.py:142
+[2024-01-22 13:47:33] WARN  Hardcoded credential found in config.example.js:8
+[2024-01-22 13:49:58] INFO  Analyzed 842/1247 files (67%)...`,
+  't3': `[2024-01-22 14:01:00] INFO  Task queued: summarize_research_papers
+[2024-01-22 14:01:00] INFO  Waiting for available GPU slot...
+[2024-01-22 14:01:00] INFO  Estimated wait: ~4 minutes`,
+  't4': `[2024-01-22 11:22:00] INFO  Task initialized: translate_documents_german
+[2024-01-22 11:22:01] INFO  Loading model: mistral:7b
+[2024-01-22 11:22:06] INFO  Processing document batch: 48 files
+[2024-01-22 11:23:14] INFO  Translated 12/48 files
+[2024-01-22 11:25:02] ERROR OutOfMemoryError: CUDA out of memory. Tried to allocate 2.34 GiB
+[2024-01-22 11:25:02] ERROR   at /usr/local/lib/python3.11/site-packages/torch/cuda/__init__.py:678
+[2024-01-22 11:25:02] ERROR VRAM exhausted: 8.0/8.0 GB used. Reduce batch size or context length.
+[2024-01-22 11:25:03] ERROR Task aborted after 3 retries. Manual intervention required.`,
+  't5': `[2024-01-22 08:03:00] INFO  Task initialized: extract_entities_dataset
+[2024-01-22 08:03:01] INFO  Loading model: llama3:8b
+[2024-01-22 08:03:04] INFO  Input: customer_support_tickets.csv (9,402 records)
+[2024-01-22 08:03:05] INFO  Extracting: persons, organizations, locations, dates
+[2024-01-22 08:19:44] INFO  Extracted 43,821 entities across 9,402 records
+[2024-01-22 08:19:45] INFO  Deduplication: 43,821 → 12,034 unique entities
+[2024-01-22 08:19:47] INFO  Task completed. Output: /data/entities_20240122.json`,
+  't6': `[2024-01-22 14:12:00] INFO  Task initialized: draft_api_documentation
+[2024-01-22 14:12:01] INFO  Loading model: codellama:13b
+[2024-01-22 14:12:08] INFO  Parsing OpenAPI spec: api-spec.yaml (187 endpoints)
+[2024-01-22 14:12:10] INFO  Generating documentation...
+[2024-01-22 14:13:45] INFO  Completed 43/187 endpoints (23%)...`
+};
+
+const mockTasks = [
+  { id: 't1', title: 'Generate quarterly report', status: 'done', created: '2024-01-22 09:14', progress: null },
+  { id: 't2', title: 'Analyze codebase for security issues', status: 'running', created: '2024-01-22 13:45', progress: 67 },
+  { id: 't3', title: 'Summarize research papers', status: 'queued', created: '2024-01-22 14:01', progress: null },
+  { id: 't4', title: 'Translate documents to German', status: 'failed', created: '2024-01-22 11:22', progress: null },
+  { id: 't5', title: 'Extract key entities from dataset', status: 'done', created: '2024-01-22 08:03', progress: null },
+  { id: 't6', title: 'Draft API documentation', status: 'running', created: '2024-01-22 14:12', progress: 23 }
+];
+
+const mockResponses = [
+  (model) => `I'm currently running as <strong>${model}</strong> via the Ollama runtime. Based on the current server load (GPU at ~84%), I can process your request — though response latency may be slightly elevated. What would you like to know?`,
+  (model) => `Great question. As ${model}, I can help with that. Let me work through this step by step.<br><br>First, it's important to understand the context here. The underlying architecture I'm using supports multi-turn conversation with up to 8,192 tokens in the active context window.<br><br>Is there specific depth you'd like me to go into?`,
+  (model) => `Here's what I found based on my training data:<br><br>The approach you're describing is well-documented in the literature. Key considerations include:<br>• Parameter efficiency vs. raw capability tradeoffs<br>• Inference-time compute scaling<br>• Context coherence across long passages<br><br>Would you like me to elaborate on any of these points?`,
+  (model) => `Processing your request with ${model}...<br><br>Based on the information provided, I'd recommend the following approach:<br><br>1. Start with a clear problem definition<br>2. Break the task into atomic subtasks<br>3. Use chain-of-thought prompting for complex reasoning<br><br>This typically yields better results than single-shot prompting for tasks like this.`,
+  (model) => `Understood. As ${model} I should note my knowledge cutoff is March 2024, so for recent events I may not have current data.<br><br>That said, here's my analysis: The pattern you're describing is consistent with known behaviour in transformer-based models. The attention mechanism scales quadratically with sequence length, which is why you see memory pressure at longer contexts.<br><br>Anything else I can clarify?`
+];
+
+/* ════════════════════════════════════════════
+   NAVIGATION
+════════════════════════════════════════════ */
+function navigateTo(sectionId) {
+  const sections = document.querySelectorAll('.section');
+  sections.forEach(s => {
+    s.classList.remove('active');
+    s.style.display = 'none';
+  });
+
+  const target = document.getElementById(sectionId + '-section');
+  if (target) {
+    target.style.display = sectionId === 'chat' ? 'flex' : 'flex';
+    requestAnimationFrame(() => {
+      target.classList.add('active');
+    });
+  }
+
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+    item.removeAttribute('aria-current');
+  });
+  const activeNav = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
+  if (activeNav) {
+    activeNav.classList.add('active');
+    activeNav.setAttribute('aria-current', 'page');
+  }
+
+  currentSection = sectionId;
+
+  if (sectionId === 'monitor') {
+    initMonitor();
+  } else {
+    stopMonitor();
+  }
+}
+
+/* ════════════════════════════════════════════
+   CHAT
+════════════════════════════════════════════ */
+function selectThread(index) {
+  activeThreadIndex = index;
+  const items = document.querySelectorAll('.thread-item');
+  items.forEach((item, i) => item.classList.toggle('active', i === index));
+
+  const thread = threads[index];
+  document.getElementById('chat-thread-title').textContent = thread.title;
+  renderMessages(thread.messages);
+}
+
+function renderMessages(messages) {
+  const container = document.getElementById('chat-messages');
+  container.innerHTML = '';
+  const model = document.getElementById('model-select').value;
+  messages.forEach(msg => {
+    container.appendChild(buildMessageEl(msg.role, msg.text, msg.time, model));
+  });
+  container.scrollTop = container.scrollHeight;
+}
+
+function buildMessageEl(role, text, time, model) {
+  const div = document.createElement('div');
+  div.className = `message ${role}`;
+  const meta = document.createElement('div');
+  meta.className = 'message-meta';
+  meta.textContent = role === 'assistant' ? `${model} · ${time}` : time;
+  const bubble = document.createElement('div');
+  bubble.className = 'message-bubble';
+  bubble.innerHTML = text;
+  div.appendChild(meta);
+  div.appendChild(bubble);
+  return div;
+}
+
+function sendMessage() {
+  const ta = document.getElementById('chat-textarea');
+  const text = ta.value.trim();
+  if (!text) return;
+
+  const model = document.getElementById('model-select').value;
+  const container = document.getElementById('chat-messages');
+  const now = new Date();
+  const timeStr = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+
+  // Add user message
+  const userMsg = buildMessageEl('user', escapeHtml(text), timeStr, model);
+  container.appendChild(userMsg);
+  container.scrollTop = container.scrollHeight;
+
+  // Store in thread
+  threads[activeThreadIndex].messages.push({ role: 'user', text: escapeHtml(text), time: timeStr });
+  threads[activeThreadIndex].preview = text.slice(0, 40);
+
+  ta.value = '';
+  ta.style.height = '';
+
+  // Typing indicator
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'message assistant';
+  typingDiv.id = 'typing-indicator';
+  typingDiv.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+  container.appendChild(typingDiv);
+  container.scrollTop = container.scrollHeight;
+
+  // Mock response after 1.5s
+  setTimeout(() => {
+    const indicator = document.getElementById('typing-indicator');
+    if (indicator) indicator.remove();
+
+    const responseNow = new Date();
+    const responseTime = responseNow.getHours() + ':' + String(responseNow.getMinutes()).padStart(2, '0');
+    const responseFn = mockResponses[Math.floor(Math.random() * mockResponses.length)];
+    const responseText = responseFn(model);
+
+    const assistantMsg = buildMessageEl('assistant', responseText, responseTime, model);
+    container.appendChild(assistantMsg);
+    container.scrollTop = container.scrollHeight;
+
+    threads[activeThreadIndex].messages.push({ role: 'assistant', text: responseText, time: responseTime });
+  }, 1500);
+}
+
+function handleChatKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResizeTextarea(el) {
+  el.style.height = '';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function newChat() {
+  const idx = threads.length;
+  threads.push({
+    title: 'New conversation',
+    preview: 'Start typing…',
+    timestamp: 'Just now',
+    messages: []
+  });
+  renderThreadList();
+  selectThread(idx);
+}
+
+function renderThreadList() {
+  const list = document.getElementById('thread-list');
+  list.innerHTML = '';
+  threads.forEach((t, i) => {
+    const item = document.createElement('div');
+    item.className = 'thread-item' + (i === activeThreadIndex ? ' active' : '');
+    item.setAttribute('role', 'listitem');
+    item.setAttribute('tabindex', '0');
+    item.innerHTML = `<div class="thread-title">${escapeHtml(t.title)}</div><div class="thread-preview">${escapeHtml(t.preview)}</div><div class="thread-meta">${t.timestamp}</div>`;
+    item.onclick = () => selectThread(i);
+    item.onkeydown = (e) => { if (e.key === 'Enter') selectThread(i); };
+    list.appendChild(item);
+  });
+}
+
+function searchThreads(query) {
+  const items = document.querySelectorAll('.thread-item');
+  items.forEach((item, i) => {
+    const title = threads[i]?.title || '';
+    const preview = threads[i]?.preview || '';
+    const match = !query || title.toLowerCase().includes(query.toLowerCase()) || preview.toLowerCase().includes(query.toLowerCase());
+    item.style.display = match ? '' : 'none';
+  });
+}
+
+function clearChat() {
+  threads[activeThreadIndex].messages = [];
+  renderMessages([]);
+}
+
+function onModelChange(val) {
+  document.querySelector('#model-select').value = val;
+  const ta = document.getElementById('chat-textarea');
+  ta.placeholder = `Message ${val}…`;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ════════════════════════════════════════════
+   TASKS
+════════════════════════════════════════════ */
+let currentTaskFilter = 'all';
+let expandedTasks = new Set();
+
+function filterTasks(status, btn) {
+  currentTaskFilter = status;
+  document.querySelectorAll('.filter-tab').forEach(t => {
+    t.classList.remove('active');
+    t.setAttribute('aria-selected', 'false');
+  });
+  if (btn) {
+    btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
+  }
+  renderTaskList();
+}
+
+function renderTaskList() {
+  const list = document.getElementById('task-list');
+  list.innerHTML = '';
+  const filtered = currentTaskFilter === 'all'
+    ? mockTasks
+    : mockTasks.filter(t => t.status === currentTaskFilter);
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div style="padding:24px;color:var(--text-muted);font-size:0.875rem;">No tasks match this filter.</div>`;
+    return;
+  }
+
+  filtered.forEach(task => {
+    const row = buildTaskRow(task);
+    list.appendChild(row);
+  });
+}
+
+function buildTaskRow(task) {
+  const row = document.createElement('article');
+  row.className = 'task-row';
+  row.setAttribute('aria-label', `Task: ${task.title}`);
+
+  const isExpanded = expandedTasks.has(task.id);
+  const badgeClass = `badge-${task.status}`;
+  const statusLabel = task.status.charAt(0).toUpperCase() + task.status.slice(1);
+
+  let progressHtml = '';
+  if (task.status === 'running' && task.progress !== null) {
+    progressHtml = `
+      <div class="task-progress-wrap">
+        <div class="task-progress-bar-bg">
+          <div class="task-progress-bar animate" style="width:${task.progress}%"></div>
+        </div>
+        <div class="task-progress-label">${task.progress}% complete</div>
+      </div>`;
+  }
+
+  const logContent = mockTaskLogs[task.id] || '[No log available]';
+
+  row.innerHTML = `
+    <div class="task-row-header" onclick="toggleTaskDetail('${task.id}')" role="button" tabindex="0"
+         aria-expanded="${isExpanded}" aria-controls="log-${task.id}" onkeydown="if(event.key==='Enter')toggleTaskDetail('${task.id}')">
+      <div class="task-title">${escapeHtml(task.title)}</div>
+      <span class="status-badge ${badgeClass}">${statusLabel}</span>
+      <span class="task-timestamp">${task.created}</span>
+      <button class="chevron-btn ${isExpanded ? 'open' : ''}" aria-label="${isExpanded ? 'Collapse' : 'Expand'} task details" onclick="event.stopPropagation();toggleTaskDetail('${task.id}')">
+        <i data-lucide="chevron-down" style="width:14px;height:14px;" aria-hidden="true"></i>
+      </button>
+    </div>
+    ${progressHtml}
+    <div class="task-detail ${isExpanded ? 'open' : ''}" id="log-${task.id}">
+      <pre class="task-log" aria-label="Task log for ${escapeHtml(task.title)}">${formatLog(logContent)}</pre>
+    </div>`;
+
+  return row;
+}
+
+function formatLog(log) {
+  return log
+    .replace(/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/g, '<span class="log-line-time">[$1]</span>')
+    .replace(/(ERROR[^\n]*)/g, '<span class="log-line-err">$1</span>')
+    .replace(/(completed successfully[^\n]*|Task completed[^\n]*)/g, '<span class="log-line-ok">$1</span>');
+}
+
+function toggleTaskDetail(taskId) {
+  if (expandedTasks.has(taskId)) {
+    expandedTasks.delete(taskId);
+  } else {
+    expandedTasks.add(taskId);
+  }
+  renderTaskList();
+  // Re-init lucide icons for new elements
+  if (window.lucide) lucide.createIcons();
+}
+
+function showNewTaskModal() {
+  const title = prompt('Enter task description:');
+  if (!title || !title.trim()) return;
+  mockTasks.unshift({
+    id: 't_' + Date.now(),
+    title: title.trim(),
+    status: 'queued',
+    created: new Date().toISOString().slice(0, 16).replace('T', ' '),
+    progress: null
+  });
+  mockTaskLogs['t_' + Date.now()] = `[${new Date().toISOString().replace('T', ' ').slice(0, 19)}] INFO  Task queued: ${title.trim()}\n[${new Date().toISOString().replace('T', ' ').slice(0, 19)}] INFO  Waiting for available GPU slot...`;
+  renderTaskList();
+  if (window.lucide) lucide.createIcons();
+}
+
+/* ════════════════════════════════════════════
+   SYSTEM MONITOR
+════════════════════════════════════════════ */
+let monitorInited = false;
+
+function initMonitor() {
+  if (monitorInited) {
+    startMonitorInterval();
+    return;
+  }
+
+  // Show skeleton for 0.8s then reveal real content
+  setTimeout(() => {
+    document.getElementById('monitor-skeleton').style.display = 'none';
+    document.getElementById('monitor-real').style.display = 'block';
+    monitorInited = true;
+    initCharts();
+    updateMetrics();
+    startMonitorInterval();
+  }, 800);
+}
+
+function stopMonitor() {
+  if (monitorInterval) {
+    clearInterval(monitorInterval);
+    monitorInterval = null;
+  }
+}
+
+function startMonitorInterval() {
+  stopMonitor();
+  monitorInterval = setInterval(updateMetrics, 3000);
+}
+
+function initCharts() {
+  // Destroy existing
+  if (cpuChart) { cpuChart.destroy(); cpuChart = null; }
+  if (gpuChart) { gpuChart.destroy(); gpuChart = null; }
+
+  const chartDefaults = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 400 },
+    plugins: { legend: { display: false }, tooltip: {
+      backgroundColor: '#1c1b19',
+      borderColor: '#2a2925',
+      borderWidth: 1,
+      titleColor: '#a09a8e',
+      bodyColor: '#e8e3d8',
+      padding: 8
+    }},
+    scales: {
+      x: { display: false },
+      y: {
+        display: true,
+        min: 0, max: 100,
+        grid: { color: 'rgba(42,41,37,0.6)', drawBorder: false },
+        ticks: { color: '#6b6560', font: { size: 10 }, maxTicksLimit: 4 }
+      }
+    },
+    elements: { point: { radius: 0 }, line: { tension: 0.4 } }
+  };
+
+  const labels = Array(20).fill('');
+
+  const cpuCtx = document.getElementById('cpu-chart').getContext('2d');
+  cpuChart = new Chart(cpuCtx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: [...cpuHistory],
+        borderColor: '#4f98a3',
+        borderWidth: 1.5,
+        fill: true,
+        backgroundColor: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 120);
+          g.addColorStop(0, 'rgba(79,152,163,0.25)');
+          g.addColorStop(1, 'rgba(79,152,163,0.0)');
+          return g;
+        }
+      }]
+    },
+    options: chartDefaults
+  });
+
+  const gpuCtx = document.getElementById('gpu-chart').getContext('2d');
+  gpuChart = new Chart(gpuCtx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: [...gpuHistory],
+        borderColor: '#b8922a',
+        borderWidth: 1.5,
+        fill: true,
+        backgroundColor: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 120);
+          g.addColorStop(0, 'rgba(184,146,42,0.25)');
+          g.addColorStop(1, 'rgba(184,146,42,0.0)');
+          return g;
+        }
+      }]
+    },
+    options: chartDefaults
+  });
+}
+
+function animateNumber(elId, newVal, suffix = '') {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const oldVal = parseFloat(el.textContent) || 0;
+  const diff = newVal - oldVal;
+  const steps = 12;
+  let step = 0;
+  const iv = setInterval(() => {
+    step++;
+    const cur = oldVal + diff * (step / steps);
+    el.textContent = Number.isInteger(newVal) ? Math.round(cur) : cur.toFixed(1);
+    if (step >= steps) { el.textContent = newVal; clearInterval(iv); }
+  }, 25);
+}
+
+function updateMetrics() {
+  // Simulated metric deltas
+  const newCpu = Math.max(5, Math.min(95, parseFloat(document.getElementById('cpu-val').textContent || 23) + (Math.random() * 10 - 5)));
+  const newGpuLoad = Math.max(60, Math.min(99, parseFloat(document.getElementById('gpu-load-val').textContent || 84) + (Math.random() * 8 - 4)));
+  const newGpuTemp = Math.max(60, Math.min(85, parseFloat(document.getElementById('gpu-temp-val').textContent || 71) + (Math.random() * 4 - 2)));
+  const newRam = Math.max(10, Math.min(30, parseFloat(document.getElementById('ram-val').textContent || 12.4) + (Math.random() * 0.4 - 0.2)));
+  const newVram = Math.max(6.5, Math.min(8, parseFloat(document.getElementById('vram-val').textContent || 7.2) + (Math.random() * 0.2 - 0.1)));
+
+  animateNumber('cpu-val', Math.round(newCpu));
+  animateNumber('gpu-load-val', Math.round(newGpuLoad));
+  animateNumber('gpu-temp-val', Math.round(newGpuTemp));
+  animateNumber('ram-val', Math.round(newRam * 10) / 10);
+  animateNumber('vram-val', Math.round(newVram * 10) / 10);
+
+  const cpuBar = document.getElementById('cpu-bar');
+  if (cpuBar) cpuBar.style.width = newCpu.toFixed(0) + '%';
+  const gpuLoadBar = document.getElementById('gpu-load-bar');
+  if (gpuLoadBar) gpuLoadBar.style.width = newGpuLoad.toFixed(0) + '%';
+  const gpuTempBar = document.getElementById('gpu-temp-bar');
+  if (gpuTempBar) gpuTempBar.style.width = newGpuTemp.toFixed(0) + '%';
+  const ramBar = document.getElementById('ram-bar');
+  if (ramBar) ramBar.style.width = ((newRam / 32) * 100).toFixed(0) + '%';
+  const ramSub = document.getElementById('ram-sub');
+  if (ramSub) ramSub.textContent = `of 32 GB · ${Math.round((newRam / 32) * 100)}%`;
+  const vramBar = document.getElementById('vram-bar');
+  if (vramBar) vramBar.style.width = ((newVram / 8) * 100).toFixed(0) + '%';
+
+  const tempSub = document.getElementById('gpu-temp-sub');
+  if (tempSub) {
+    if (newGpuTemp > 80) tempSub.textContent = 'High · Fan 90%';
+    else if (newGpuTemp > 73) tempSub.textContent = 'Warm · Fan 75%';
+    else tempSub.textContent = 'Normal · Fan 62%';
+  }
+
+  // Update charts
+  cpuHistory.push(newCpu);
+  cpuHistory.shift();
+  gpuHistory.push(newGpuLoad);
+  gpuHistory.shift();
+
+  if (cpuChart) {
+    cpuChart.data.datasets[0].data = [...cpuHistory];
+    cpuChart.update('none');
+  }
+  if (gpuChart) {
+    gpuChart.data.datasets[0].data = [...gpuHistory];
+    gpuChart.update('none');
+  }
+
+  const cpuCur = document.getElementById('cpu-chart-cur');
+  if (cpuCur) cpuCur.textContent = Math.round(newCpu);
+  const gpuCur = document.getElementById('gpu-chart-cur');
+  if (gpuCur) gpuCur.textContent = Math.round(newGpuLoad);
+
+  const lu = document.getElementById('last-updated');
+  if (lu) {
+    const d = new Date();
+    lu.textContent = 'Updated ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+  }
+}
+
+/* ════════════════════════════════════════════
+   SETTINGS
+════════════════════════════════════════════ */
+function testConnection(service) {
+  const statusId = service + '-conn-status';
+  const el = document.getElementById(statusId);
+  if (!el) return;
+  el.textContent = 'Testing…';
+  el.className = 'conn-status';
+  setTimeout(() => {
+    // Mock: ollama succeeds, openclaw randomly fails sometimes
+    const success = service === 'ollama' ? true : Math.random() > 0.3;
+    el.textContent = success ? '✓ Connected' : '✗ Unreachable';
+    el.className = 'conn-status ' + (success ? 'conn-ok' : 'conn-err');
+  }, 900);
+}
+
+function toggleTheme(isLight) {
+  document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+  localStorage.setItem('ai-dashboard-theme', isLight ? 'light' : 'dark');
+  if (cpuChart || gpuChart) {
+    // Reinit charts with new colours if monitor open
+    if (currentSection === 'monitor') initCharts();
+  }
+}
+
+function toggleCompact(isCompact) {
+  document.documentElement.style.setProperty('--compact', isCompact ? '1' : '0');
+  document.body.classList.toggle('compact', isCompact);
+  localStorage.setItem('ai-dashboard-compact', isCompact ? '1' : '0');
+}
+
+function togglePassword(fieldId, btn) {
+  const field = document.getElementById(fieldId);
+  if (!field) return;
+  const isHidden = field.type === 'password';
+  field.type = isHidden ? 'text' : 'password';
+  btn.innerHTML = isHidden
+    ? '<i data-lucide="eye-off" style="width:14px;height:14px;" aria-hidden="true"></i>'
+    : '<i data-lucide="eye" style="width:14px;height:14px;" aria-hidden="true"></i>';
+  if (window.lucide) lucide.createIcons();
+}
+
+function saveSettings() {
+  const settings = {
+    ollamaUrl: document.getElementById('ollama-url').value,
+    openclawUrl: document.getElementById('openclaw-url').value,
+    defaultModel: document.getElementById('default-model').value,
+    contextLength: document.getElementById('context-length').value,
+    apiKey: document.getElementById('api-key').value,
+    bearerToken: document.getElementById('bearer-token').value
+  };
+  try {
+    localStorage.setItem('ai-dashboard-settings', JSON.stringify(settings));
+  } catch(e) {}
+  showSaveConfirmation();
+}
+
+function showSaveConfirmation() {
+  const el = document.getElementById('save-confirmation');
+  if (!el) return;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem('ai-dashboard-settings');
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (s.ollamaUrl) document.getElementById('ollama-url').value = s.ollamaUrl;
+    if (s.openclawUrl) document.getElementById('openclaw-url').value = s.openclawUrl;
+    if (s.defaultModel) document.getElementById('default-model').value = s.defaultModel;
+    if (s.contextLength) document.getElementById('context-length').value = s.contextLength;
+  } catch(e) {}
+
+  const theme = localStorage.getItem('ai-dashboard-theme');
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    const toggle = document.getElementById('theme-toggle');
+    if (toggle) toggle.checked = true;
+  }
+
+  const compact = localStorage.getItem('ai-dashboard-compact');
+  if (compact === '1') {
+    toggleCompact(true);
+    const toggle = document.getElementById('compact-toggle');
+    if (toggle) toggle.checked = true;
+  }
+}
+
+/* ════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  // Init Lucide icons
+  if (window.lucide) lucide.createIcons();
+
+  // Load persisted settings
+  loadSettings();
+
+  // Render tasks
+  renderTaskList();
+
+  // Set initial section visible with proper styling
+  const chatSection = document.getElementById('chat-section');
+  chatSection.style.display = 'flex';
+  chatSection.classList.add('active');
+
+  // Keyboard nav for sidebar
+  document.querySelectorAll('.nav-item[data-section]').forEach(btn => {
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        btn.click();
+      }
+    });
+  });
+});
+</script>
+</body>
+</html>
