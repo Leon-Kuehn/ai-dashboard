@@ -50,52 +50,70 @@ http {
         add_header Referrer-Policy          "no-referrer" always;
         add_header Permissions-Policy       "camera=(), microphone=(), geolocation=()" always;
 
-        # Only allow GET and HEAD
-        if ($request_method !~ ^(GET|HEAD)$) {
-            return 405;
-        }
-
         root  /usr/share/nginx/html;
         index dashboard.html;
 
         # Disable directory listing
         autoindex off;
 
-        # Static files
+        # ── Static dashboard: GET / HEAD only ─────────────────
+        location = / {
+            limit_except GET HEAD { return 405; }
+            try_files /dashboard.html =404;
+        }
+
+        location ~* \.html$ {
+            limit_except GET HEAD { return 405; }
+            try_files $uri /dashboard.html;
+        }
+
         location / {
+            limit_except GET HEAD { return 405; }
             try_files $uri $uri/ /dashboard.html;
         }
 
-        # Proxy: metrics
+        # ── Proxy: metrics (read-only, GET only) ──────────────
         location /api/metrics {
+            limit_except GET HEAD { return 405; }
             proxy_pass         http://metrics_proxy/metrics;
             proxy_set_header   Host $host;
             proxy_read_timeout 5s;
         }
 
-        # Proxy: metrics health
         location /api/health {
+            limit_except GET HEAD { return 405; }
             proxy_pass         http://metrics_proxy/health;
             proxy_set_header   Host $host;
             proxy_read_timeout 5s;
         }
 
-        # Proxy: Ollama
+        # ── Proxy: Ollama (full pass-through — chat needs POST) ─
+        # Allowed: GET, HEAD, POST (streaming completions, tag list, etc.)
+        # Blocked: PUT, DELETE, PATCH — Ollama has no need for these from the dashboard
         location /api/ollama/ {
+            limit_except GET HEAD POST { return 405; }
             resolver           127.0.0.11 valid=30s;
             set $ollama_upstream http://${OLLAMA_HOST}:${OLLAMA_PORT};
             proxy_pass         $ollama_upstream/;
             proxy_set_header   Host ${OLLAMA_HOST};
-            proxy_read_timeout 120s;
+            proxy_set_header   X-Real-IP $remote_addr;
+            # Streaming support (Ollama streams NDJSON)
+            proxy_buffering    off;
+            proxy_read_timeout 300s;
         }
 
-        # Proxy: OpenClaw
+        # ── Proxy: OpenClaw (full API — chat + tasks need POST/DELETE) ─
+        # Allowed: GET, HEAD, POST, DELETE (task management + chat)
+        # Blocked: PUT, PATCH — restrict to minimum needed
         location /api/openclaw/ {
+            limit_except GET HEAD POST DELETE { return 405; }
             resolver           127.0.0.11 valid=30s;
             set $openclaw_upstream http://${OPENCLAW_HOST}:${OPENCLAW_PORT};
             proxy_pass         $openclaw_upstream/;
             proxy_set_header   Host ${OPENCLAW_HOST};
-            proxy_read_timeout 30s;
+            proxy_set_header   X-Real-IP $remote_addr;
+            proxy_buffering    off;
+            proxy_read_timeout 120s;
         }
     }
 }
