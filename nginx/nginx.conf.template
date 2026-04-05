@@ -1,6 +1,6 @@
 worker_processes  auto;
-error_log  /var/log/nginx/error.log warn;
-pid        /var/run/nginx.pid;
+error_log  /dev/stderr warn;
+pid        /tmp/nginx.pid;
 
 events {
     worker_connections  1024;
@@ -9,6 +9,7 @@ events {
 http {
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
+    access_log    /dev/stdout;
 
     sendfile        on;
     keepalive_timeout  65;
@@ -16,7 +17,8 @@ http {
 
     # Gzip
     gzip on;
-    gzip_types text/html text/css application/javascript application/json;
+    # text/html is compressed by default; do not repeat it in gzip_types.
+    gzip_types text/css application/javascript application/json;
     gzip_min_length 256;
 
     # Upstream services (resolved via Docker internal DNS)
@@ -58,30 +60,30 @@ http {
 
         # ── Static dashboard: GET / HEAD only ─────────────────
         location = / {
-            limit_except GET HEAD { return 405; }
+            if ($request_method !~ ^(GET|HEAD)$) { return 405; }
             try_files /dashboard.html =404;
         }
 
         location ~* \.html$ {
-            limit_except GET HEAD { return 405; }
+            if ($request_method !~ ^(GET|HEAD)$) { return 405; }
             try_files $uri /dashboard.html;
         }
 
         location / {
-            limit_except GET HEAD { return 405; }
+            if ($request_method !~ ^(GET|HEAD)$) { return 405; }
             try_files $uri $uri/ /dashboard.html;
         }
 
         # ── Proxy: metrics (read-only, GET only) ──────────────
         location /api/metrics {
-            limit_except GET HEAD { return 405; }
+            if ($request_method !~ ^(GET|HEAD)$) { return 405; }
             proxy_pass         http://metrics_proxy/metrics;
             proxy_set_header   Host $host;
             proxy_read_timeout 5s;
         }
 
         location /api/health {
-            limit_except GET HEAD { return 405; }
+            if ($request_method !~ ^(GET|HEAD)$) { return 405; }
             proxy_pass         http://metrics_proxy/health;
             proxy_set_header   Host $host;
             proxy_read_timeout 5s;
@@ -91,7 +93,7 @@ http {
         # Allowed: GET, HEAD, POST (streaming completions, tag list, etc.)
         # Blocked: PUT, DELETE, PATCH — Ollama has no need for these from the dashboard
         location /api/ollama/ {
-            limit_except GET HEAD POST { return 405; }
+            if ($request_method !~ ^(GET|HEAD|POST)$) { return 405; }
             resolver           127.0.0.11 valid=30s;
             set $ollama_upstream http://${OLLAMA_HOST}:${OLLAMA_PORT};
             proxy_pass         $ollama_upstream/;
@@ -106,7 +108,7 @@ http {
         # Allowed: GET, HEAD, POST, DELETE (task management + chat)
         # Blocked: PUT, PATCH — restrict to minimum needed
         location /api/openclaw/ {
-            limit_except GET HEAD POST DELETE { return 405; }
+            if ($request_method !~ ^(GET|HEAD|POST|DELETE)$) { return 405; }
             resolver           127.0.0.11 valid=30s;
             set $openclaw_upstream http://${OPENCLAW_HOST}:${OPENCLAW_PORT};
             proxy_pass         $openclaw_upstream/;

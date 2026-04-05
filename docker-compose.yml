@@ -16,7 +16,7 @@ services:
     entrypoint: ["/entrypoint.sh"]
     ports:
       - "80:80"
-      - "443:443"
+      - "3000:443"
     environment:
       - OLLAMA_HOST=${OLLAMA_HOST:-192.168.1.100}
       - OLLAMA_PORT=${OLLAMA_PORT:-11434}
